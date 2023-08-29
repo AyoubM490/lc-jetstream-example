@@ -1,7 +1,10 @@
 <?php
 
-use App\Http\Controllers\PostController;
+use App\Models\Team;
+use App\Models\User;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
+use Laravel\Socialite\Facades\Socialite;
 
 /*
 |--------------------------------------------------------------------------
@@ -38,13 +41,36 @@ Route::middleware([
     })->name('members');
 });
 
-Route::middleware(['auth:sanctum', 'verified'])->group(function () {
-    Route::get('/posts/create', [PostController::class, 'create'])->name('posts.create');
-    Route::post('/posts/create', [PostController::class, 'store'])->name('posts.store');
-    Route::get('/posts/{post}/edit', [PostController::class, 'edit'])->name('posts.edit');
-    Route::patch('/posts/{post}', [PostController::class, 'update'])->name('posts.update');
-    Route::delete('/posts/{post}', [PostController::class, 'destroy'])->name('posts.destroy');
+Route::get('/auth/redirect', function () {
+    return Socialite::driver('github')->redirect();
 });
 
-Route::get('/posts', [PostController::class, 'index'])->name('posts.index');
-Route::get('/posts/{post}', [PostController::class, 'show'])->name('posts.show');
+Route::get('github/auth/callback', function () {
+    $githubUser = Socialite::driver('github')->user();
+
+    $user = User::firstOrCreate(
+        [
+            'provider_id' => $githubUser->getId(),
+        ],
+        [
+            'email' => $githubUser->getEmail(),
+            'name' => $githubUser->getName(),
+        ]
+    );
+
+    if(is_null($user->currentTeam)) {
+        $user->ownedTeams()->save(Team::forceCreate([
+            'user_id' => $user->id,
+            'name' => explode(' ', $user->name, 2)[0]."'s Team",
+            'personal_team' => true,
+        ]));
+    }
+
+    // $user->token
+
+    // Log the user in
+    auth()->login($user, true);
+
+    // Redirect to dashboard
+    return redirect('dashboard');
+});
